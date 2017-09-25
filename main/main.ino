@@ -1,3 +1,3 @@
 /* 
- * В этом файле будет содержаться основная часть программы
+ * This file is the main part of the program
  */
