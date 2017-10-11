@@ -2,20 +2,20 @@
  * This file is the main part of the program
  */
 
- //Значения из даташита
+ //Values from datasheet
 #define RT0 10000   // Оm
 #define B 3977      // K
 //--------------------------------------
 #define VCC 5    //Supply voltage
 #define R 10000  //R=10 КОm
+#define Relay 4 
 
 //переменные
 float RT, VR, ln, TX, T0, VRT;
 
-int Relay = 4;
 
-int ReadTemp(){
-  
+int ReadTemp()
+{
   VRT = analogRead(A0);              //Reading the analog value of VRT
   VRT = (5.00 / 1023.00) * VRT;      //Convert to voltage
   VR = VCC - VRT;
@@ -31,27 +31,33 @@ int ReadTemp(){
   Serial.print(TX);
   Serial.print("C\t\t");
   delay(500);
+}
 
-                                  }
-
-int TurnLightOn(){
+int TurnLightOn()
+{
   digitalWrite(Relay, LOW);
-                  }
+}
 
-int TurnLightOf(){
+int TurnLightOf()
+{
   digitalWrite(Relay, HIGH);
-                  }
+}
+
+bool CheckWater()
+{
+  return true;
+}
 
 void setup() {
   Serial.begin(9600);
-  T0 = 25 + 273.15;                 //Температура T0 из даташита, преобразуем из цельсиев в кельвины
+  T0 = 25 + 273.15;                 //Temperature from Datasheet, converting from celsius to kelvin
 
   pinMode(2, OUTPUT); //the relay (lamp)
-              }
+}
 
 void loop(){
   
-            }
+}
 
 
 
