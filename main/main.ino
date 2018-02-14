@@ -2,10 +2,11 @@
  * This file is the main part of the program
  */
  
-#include "DHT.h" 
 #include <LiquidCrystal.h>
+#include <iarduino_RTC.h>
 #include <Wire.h>
-#include "RTClib.h"
+#include <DHT.h>
+
 
 
 //--------------------------------------
@@ -39,7 +40,7 @@ LiquidCrystal lcd(lcdRS, lcdE, lcd4, lcd5, lcd6, lcd7);
 // RTC
 #define SDA A4
 #define SCL A5 
-RTC_DS1307 RTC;
+iarduino_RTC time(RTC_DS1307);   
 
 // Water sensor
 #define water_sensor A0
@@ -56,15 +57,17 @@ DHT dht(DHTPIN, DHTTYPE);
 
 // Variables
 float RT, VR, ln, TX, T0, VRT;
-int water;
-int water_time;
-int dryness = 0;
-float temp;
-float humid;
-float light;
-byte iter =  202;
-byte n;
-const int daytime = 0; 
+int water; // variable for water sensor 
+int watering_duration; 
+int watering_time; // time for watering the plant
+int dryness = 0; // the minimum level of humidity for the plant
+float temp; // an actual temperature
+float humidity; // an actual humidity level in %
+float light; // an actual brightness level
+const byte iter =  202; // divider for comfortble converting voltage to contingent designations
+byte n; // variable to contingent designation
+const int daylight = 0; // minimum level of brighness
+const int twilight = 0; // really bad illumination 
 //--------------------------------------
 
 
@@ -83,29 +86,11 @@ bool CheckWater()
 }
 
 
-double Humidity()
-{
-  return humid = dht.readHumidity();
-}
-
-
-double Temperature()
-{
-  return temp = dht.readTemperature();
-}
-
-
-double Lightness()
-{
-  return light = analogRead(phRes);  
-}
-
-
 void LampControl()
 {
-  light = Lightness();
+  light = analogRead(phRes);
   n = light/iter;
-  if (n < daytime)
+  if (n < daylight)
   {
     digitalWrite(lamp, HIGH);
   }
@@ -116,13 +101,14 @@ void LampControl()
 }
 
 
-void Humidification(duration)
+void Humidification(int duration, int humidity)
 {
-  humid = Humidity()
-  if (humid < dryness)
+  humidity = dht.readHumidity();
+  if (humidity < dryness) 
   {
+    do {
     digitalWrite(mMaker, HIGH);
-    delay(duration);
+    } while (humidity < dryness);
     digitalWrite(mMaker, LOW);
   }
 }
@@ -130,6 +116,8 @@ void Humidification(duration)
 
 void Watering(int when, int duration, int rtc)
 {
+  duration = watering_duration;
+  when = watering_time;
   rtc = time.gettime("H:i");
   if (when == rtc)
   {
@@ -140,14 +128,50 @@ void Watering(int when, int duration, int rtc)
 }
 
 
-void DisplayMain(int rtc)
+void DisplayMain(int rtc, int humidity, int temp)
 {
   rtc = time.gettime("H:i");
-  lcd.print(time.gettime("H:i"));
-  lcd.setCursor(0,1);
-  lcd.print("f ", humid = Humidity(), " %");
-  lcd.setCursor(8,1);
-  lcd.print(temp = Temperature(), " *C");
+  light = analogRead(phRes);
+  n = light/iter;
+  temp = dht.readTemperature();
+  humidity = dht.readHumidity();
+
+  // print time
+  lcd.print(rtc);
+
+  // print level of brightness
+  lcd.setCursor(6, 0);
+  if (n > daylight)
+  {
+    lcd.print("Afternon");
+  } else if (n < daylight && n > twilight) {
+    lcd.print("Twilight");
+  } else if (n < twilight) {
+    lcd.print("Night");
+  }
+  
+  // print humidity level
+  lcd.setCursor(0, 1);
+  lcd.print("f ");
+  lcd.setCursor(3, 1);
+  lcd.print(humidity);
+  if (humid < 10) 
+  {
+    lcd.setCursor(5,1);  
+  } else {
+    lcd.setCursor(6,1); 
+  }
+  lcd.print("%");
+
+  // print temperature in celcium
+  lcd.setCursor(8, 1);
+  lcd.print(temp);
+  if (temp < 10 && temp > -10) {
+    lcd.setCursor(10, 1);
+  } else {
+    lcd.setCursor(11, 1);
+  }
+  lcd.print("C*");
 }
 
 
@@ -157,14 +181,10 @@ void setup()
 
   // RTC part
   Wire.begin();
-    RTC.begin();
-  if (! RTC.isrunning()) 
-  {
-    Serial.println("RTC is NOT running!");
-    // following line sets the RTC to the date & time this sketch was compiled
-    RTC.adjust(DateTime(__DATE__, __TIME__));
+  time.begin();
+  time.settime(0,0,0,27, 14, 18, 5);  // sec, min, hour, month, year, day of the week
 
-  // Humidity sensor part
+  // Humidity and temperature sensor part
   dht.begin();
 
   // Display part
@@ -186,7 +206,7 @@ void setup()
   // Lamp initializing
   pinMode(lamp, OUTPUT);
   }
-}
+
 
 
 void loop()
