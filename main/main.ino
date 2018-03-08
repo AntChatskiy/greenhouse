@@ -1,23 +1,16 @@
-/* 
- * This file is the main part of the program
- */
- 
+#include <DHT.h>
 #include <LiquidCrystal.h>
 #include <iarduino_RTC.h>
-#include <Wire.h>
-#include <DHT.h>
+iarduino_RTC time(RTC_DS1307);
 
+// Water sensor
+#define waterSensor A1
 
+// Photoresistor
+#define phRes A3
 
-//--------------------------------------
-#define VCC 5    //Supply voltage
-
-// Keyboard
-#define btn_line 3
-#define btn1 4
-#define btn2 5
-#define btn3 6
-#define btn4 7
+// Diod
+#define diod 3
 
 // Pump relay
 #define pump 0 
@@ -37,182 +30,502 @@
 #define lcdRS 13
 LiquidCrystal lcd(lcdRS, lcdE, lcd4, lcd5, lcd6, lcd7);
 
-// RTC
-#define SDA A4
-#define SCL A5 
-iarduino_RTC time(RTC_DS1307);   
-
-// Water sensor
-#define water_sensor A0
-
 // Humidity and temperature sensor
-#define DHTPIN 14
-#define DHTTYPE DHT22
+#define DHTPIN 14 
+#define DHTTYPE 22
 DHT dht(DHTPIN, DHTTYPE);
 
-// Photoresistor
-#define phRes A3
 
-//--------------------------------------
+#define buttonPins 4
+const byte btns[] = {4, 5, 6, 7};
 
-// Variables
-float RT, VR, ln, TX, T0, VRT;
-int water; // variable for water sensor 
-int watering_duration; 
-int watering_time; // time for watering the plant
-int dryness = 0; // the minimum level of humidity for the plant
-float temp; // an actual temperature
-float humidity; // an actual humidity level in %
-float light; // an actual brightness level
-const byte iter =  202; // divider for comfortble converting voltage to contingent designations
-byte n; // variable to contingent designation
-const int daylight = 0; // minimum level of brighness
-const int twilight = 0; // really bad illumination 
-//--------------------------------------
+short check_time;
 
+int min_humid = 50;
+int real_humid = 60;
+boolean humidification_status = false; // false - arduino do not watering now, true - arduino watering now
 
-bool CheckWater()
-{
-  water = analogRead(water_sensor);
-  n = water/iter;
-  if (n < 5)
-  {
-    return true;
-  }
-   else
-   {
-    return false;
-   }  
-}
+byte watering_hours = 12;
+byte watering_minutes = 30;
+byte intensity = 0;
+boolean watering_status = false; 
+
+short led_time; 
+boolean led_on = true;
+
+boolean lamp_is_on = false;
+boolean mMaker_is_on = false;
+boolean pump_is_on = false;
 
 
-void LampControl()
-{
-  light = analogRead(phRes);
-  n = light/iter;
-  if (n < daylight)
-  {
-    digitalWrite(lamp, HIGH);
-  }
-  else
-  {
-    digitalWrite(lamp, LOW);
-  }
-}
-
-
-void Humidification(int duration, int humidity)
-{
-  humidity = dht.readHumidity();
-  if (humidity < dryness) 
-  {
-    do {
-    digitalWrite(mMaker, HIGH);
-    } while (humidity < dryness);
-    digitalWrite(mMaker, LOW);
-  }
-}
-
-
-void Watering(int when, int duration, int rtc)
-{
-  duration = watering_duration;
-  when = watering_time;
-  rtc = time.gettime("H:i");
-  if (when == rtc)
-  {
-    digitalWrite(pump, HIGH);
-    delay(duration);
-    digitalWrite(pump, LOW);   
-  }
-}
-
-
-void DisplayMain(int rtc, int humidity, int temp)
-{
-  rtc = time.gettime("H:i");
-  light = analogRead(phRes);
-  n = light/iter;
-  temp = dht.readTemperature();
-  humidity = dht.readHumidity();
-
-  // print time
-  lcd.print(rtc);
-
-  // print level of brightness
-  lcd.setCursor(6, 0);
-  if (n > daylight)
-  {
-    lcd.print("Afternon");
-  } else if (n < daylight && n > twilight) {
-    lcd.print("Twilight");
-  } else if (n < twilight) {
-    lcd.print("Night");
-  }
-  
-  // print humidity level
-  lcd.setCursor(0, 1);
-  lcd.print("f ");
-  lcd.setCursor(3, 1);
-  lcd.print(humidity);
-  if (humid < 10) 
-  {
-    lcd.setCursor(5,1);  
-  } else {
-    lcd.setCursor(6,1); 
-  }
-  lcd.print("%");
-
-  // print temperature in celcium
-  lcd.setCursor(8, 1);
-  lcd.print(temp);
-  if (temp < 10 && temp > -10) {
-    lcd.setCursor(10, 1);
-  } else {
-    lcd.setCursor(11, 1);
-  }
-  lcd.print("C*");
-}
-
-
-void setup() 
+void setup()
 {
   Serial.begin(9600);
 
-  // RTC part
-  Wire.begin();
-  time.begin();
-  time.settime(0,0,0,27, 14, 18, 5);  // sec, min, hour, month, year, day of the week
-
-  // Humidity and temperature sensor part
-  dht.begin();
-
-  // Display part
-  lcd.begin(16, 2);
-  
   // Keyboard initializing
-  pinMode(btn_line, INPUT);
-  pinMode(btn1, INPUT);
-  pinMode(btn2, INPUT);
-  pinMode(btn3, INPUT);
-  pinMode(btn4, INPUT);
-
-  // Pump initializing
-  pinMode(pump, OUTPUT);
-
-  // Mist maker initializing
-  pinMode(mMaker, OUTPUT);
-
-  // Lamp initializing
-  pinMode(lamp, OUTPUT);
+  for (short int i = 0; i < buttonPins; i++)
+  {
+    pinMode(btns[i], INPUT_PULLUP);
   }
 
+  pinMode(diod, OUTPUT);
+  
+  pinMode(mMaker, OUTPUT);
+    
+  pinMode(pump, OUTPUT);
+
+  pinMode(phRes, INPUT);
+
+  pinMode(waterSensor,INPUT);
+  
+  // RTC part
+  time.begin();
+  time.settime(0,51,21,27,10,18,2); // sec, min, hours, day of month, year, day of week
+
+  // DHT part
+  dht.begin();
+}
 
 
 void loop()
 {
-  
+  switch(checkButton(btns[1]))
+  {
+    case 1: // alarm mode
+      digitalWrite(diod, HIGH); // alarm led
+       
+      delay(300); // delay just for user's comfort
+      Serial.println("ALARM MODE");
+      Serial.println("LAMP - 1btn");
+      Serial.println("mMAKER - 3btn");
+      Serial.println("MOTOR - 4btn");
+
+      while(true)
+      {
+        // alarm led blinking
+        if (!led_on & millis() - led_time > 1000)
+        {
+          digitalWrite(diod, HIGH);
+          led_on = true;
+          led_time = millis();
+        }
+        
+        if (led_on && millis() - led_time > 1000)
+        {
+         digitalWrite(diod, LOW);
+         led_on = false;
+         led_time = millis();
+        }
+    
+        if (checkButton(btns[1]))
+        {
+          break; // turning alarm mode off
+        }
+    
+        if (checkButton(btns[0]) && !lamp_is_on)
+        {
+          digitalWrite(lamp, HIGH);
+          lamp_is_on = true;
+        }
+    
+        else if(checkButton(btns[0]) && lamp_is_on)
+        {
+          digitalWrite(lamp, LOW);
+          lamp_is_on = false;
+        }
+        
+        if (checkButton(btns[2]) && !mMaker_is_on)
+        {
+          digitalWrite(mMaker, HIGH);
+          mMaker_is_on = true;
+        }
+    
+        else if (!checkButton(btns[2]) && mMaker_is_on)
+        {
+          digitalWrite(mMaker, LOW);
+          mMaker_is_on = false;
+        }
+    
+        if (checkButton(btns[3]) && !pump_is_on)
+        {
+          digitalWrite(pump, HIGH);
+          pump_is_on = true;
+        }
+    
+        else if(!checkButton(btns[3]) && pump_is_on)
+        {
+          digitalWrite(pump, LOW);
+          pump_is_on = false;
+        }
+     }
+           
+    default: // usual mode
+      if (millis() - check_time > 1000)
+      {
+        inf_print(min_humid, watering_hours, watering_minutes);
+        humidification_status = humidification(min_humid, humidification_status, real_humid);
+        watering_status = watering(watering_hours, watering_minutes, intensity, watering_status);
+        lighting();
+        checkWater();
+        
+        check_time = millis();
+          
+        if (checkButton(btns[0]))
+        {
+          Serial.println("Menu - btn1");
+          Serial.println("Watering settings - btn3");
+          Serial.println("Min humidity lvl - btn4");
+          delay(500);
+        
+          while(true)
+          {
+            if (checkButton(btns[0]))
+            {
+              break;
+            }
+        
+            if (checkButton(btns[2]))
+            {
+              watering_hours, watering_minutes, intensity = setSettings(watering_hours, watering_minutes, intensity);
+              Serial.print("Watering hours check: ");
+              Serial.println(watering_hours);
+              Serial.print("Watering minutes check: ");
+              Serial.println(watering_minutes);
+            }
+        
+            if (checkButton(btns[3]))
+            {
+              min_humid = setHumidity(min_humid);
+            }
+           }
+        } 
+      }      
+  }
 }
 
+
+boolean checkButton(byte btn)
+{
+  delay(10);
+  boolean buttonIsUp = digitalRead(btn);
+  
+  if (!buttonIsUp)
+  { 
+    delay(10);
+    buttonIsUp = digitalRead(btn);
+    if (!buttonIsUp)
+    {
+        return true;
+    }
+  }
+    
+  else
+  {
+    return false;
+  }
+}
+
+
+void inf_print(int min_humid, byte watering_hours, byte watering_minutes)
+{
+  /*
+   * This function shows real-time condition of device
+   */
+  int real_humid = dht.readHumidity();
+  
+  Serial.print("Time: ");
+  Serial.println(time.gettime("H:i:s"));
+
+  Serial.print("Watering time: ");
+  Serial.print(watering_hours);
+  Serial.print(":");
+  Serial.println(watering_minutes);
+  
+  Serial.print("Humidity level: ");
+  Serial.print(real_humid);
+  Serial.println("%");
+  
+  Serial.print("Min humidity level: ");
+  Serial.print(min_humid);
+  Serial.println("%");
+}
+
+
+void lighting()
+{
+  /*
+   * This function illuminates the plant
+   */
+  int value = analogRead(phRes);
+  if (time.Hours > 8 && time.Hours < 22 && value == 0)
+  {
+    Serial.println("LAMP HIGH");
+    digitalWrite(lamp, HIGH);
+  }
+  
+  else
+  {
+    Serial.println("LAMP LOW");
+    digitalWrite(lamp, LOW);
+  }
+}
+
+void checkWater()
+{
+  /*
+   * This function checks water and if there's no water:
+   * light the diod
+   */
+  int water = analogRead(A1);
+  byte iter = 202;
+  byte n = water/iter;
+  if (n<5)
+  {
+    digitalWrite(diod, HIGH);
+  }
+  
+  else
+  {
+    digitalWrite(diod, LOW);
+  }
+}
+
+
+boolean watering(byte watering_hours, byte watering_minutes, byte intensity, boolean watering_status)
+{
+  /*
+   * This function waters the plant
+   * and return boolean information:
+   * has watering already started or not
+   */
+  if (!watering_status && watering_hours == time.Hours && watering_minutes == time.minutes)
+  {
+    Serial.println("Pump HIGH");
+    //digitalWrite(pump, HIGH);
+    delay(intensity*10);
+    return true;    
+  }
+
+  else if (watering_status && watering_hours == time.Hours && watering_minutes == time.minutes)
+  {
+    return true;
+    Serial.println("Pump LOW");
+  }
+  
+  else
+  {
+    Serial.println("Pump LOW");
+    //digitalWrite(pump, LOW);
+    return false;
+  }
+
+}
+
+
+boolean humidification(int min_humid, boolean humidification_status, int real_humid)
+{
+  /*
+   * This function humidifythe plant if 
+   * it's required, or else 
+   * it just return false and do nothing.
+   */
+  // int real_humid = (dht.readHumidity()+0,5);
+  int required_humid = min_humid;
+  while (required_humid < 100 && required_humid != (min_humid+20))
+  {
+    required_humid += 1;
+  }
+
+  if (!humidification_status && real_humid <= min_humid) 
+  {
+    Serial.println("mMaker HIGH");
+    //digitalWrite(mMaker, HIGH);
+    return true;
+  }
+  
+  else if (humidification_status && real_humid < required_humid)
+  {
+    Serial.println("mMaker HIGH");
+    return true;
+  }
+  
+  else if (!humidification_status && real_humid > min_humid)
+  {
+    Serial.println("mMaker LOW");
+    return false;
+  }
+  
+  else if (humidification_status && real_humid >= required_humid)
+  {
+    Serial.println("mMaker LOW");
+    //digitalWrite(mMaker, LOW);
+    return false;
+  }
+}
+
+
+byte setSettings(byte watering_hours, byte watering_minutes, byte intensity)
+{
+  /*
+   * This function sets the settings of watering
+   */
+  Serial.print("Set watering time, now it is: ");
+  Serial.print(watering_hours);
+  Serial.print(":");
+  Serial.println(watering_minutes);
+
+  // set hours
+  Serial.println("Set hours: ");
+  delay(200);
+  while(true)
+  {
+    if (checkButton(btns[2]) && watering_hours < 24)
+    {
+      watering_hours += 1;
+      Serial.print("Hours: ");
+      Serial.println(watering_hours);
+    }
+
+    if (checkButton(btns[3]) && watering_hours > 0)
+    {
+      watering_hours -= 1;
+      Serial.print("Hours: ");
+      Serial.println(watering_hours);
+    }
+
+    else if (checkButton(btns[3]) && watering_minutes <= 0)
+    {
+      Serial.print("Hours: ");
+      Serial.println(watering_hours);
+    }
+
+    if (checkButton(btns[0]))
+    {
+      Serial.print("You've set hours: ");
+      Serial.println(watering_hours);
+      break;
+    }
+
+    delay(70);
+  }
+  
+  delay(200);
+  // set minutes
+  Serial.println("Set minutes: ");
+  delay(200);
+  while(true)
+  {
+    if (checkButton(btns[2]) && watering_minutes < 60)
+    {
+      watering_minutes += 1;
+      Serial.print("Minutes: ");
+      Serial.println(watering_minutes);
+    }
+
+    if (checkButton(btns[3]) && watering_minutes > 0)
+    {
+      watering_minutes -= 1;
+      Serial.print("Minutes: ");
+      Serial.println(watering_minutes);
+    }
+
+    else if(checkButton(btns[3]) && watering_minutes <= 0)
+    {
+      Serial.print("Minutes: ");
+      Serial.println(watering_minutes);
+    }
+    
+    if (checkButton(btns[0]))
+    {
+      Serial.print("You've set minutes: ");
+      Serial.println(watering_minutes);
+      break;
+    }
+
+    delay(70);
+  }
+
+  delay(200);
+  // set intensity
+  Serial.println("Set intensity: ");
+  delay(200);
+  while(true)  
+  {
+    if (checkButton(btns[2]))
+    {
+      intensity += 1;
+      Serial.print("Intensity: ");
+      Serial.print(intensity);
+      Serial.println(" sec");
+    }
+
+    if (checkButton(btns[3]) && intensity > 0)
+    {
+      intensity -= 1;
+      Serial.print("Intensity: ");
+      Serial.print(intensity);
+      Serial.println(" sec");
+    }
+
+    else if (checkButton(btns[3]) && intensity <= 0)
+    {
+      Serial.print("Intensity: ");
+      Serial.print(intensity);
+      Serial.println(" sec");
+    }
+    
+    if (checkButton(btns[0]))
+    {
+      Serial.print("You've set intensity: ");
+      Serial.println(intensity);
+      break;
+    }    
+  }
+
+  return watering_hours, watering_minutes, intensity;
+}
+
+
+int setHumidity(int mid_humid)
+{
+  /* 
+   * This function sets minimum humidity 
+   * level   
+   */
+
+  Serial.println("Set minimum humidity level you want");
+
+  while(true)
+  {
+
+    if (checkButton(btns[2]))
+    {
+        min_humid = (min_humid+1);
+        Serial.print("Humidity level: ");
+        Serial.print(min_humid);
+        Serial.println("%");
+    }
+
+    if (checkButton(btns[3]))
+    {
+        min_humid = (min_humid-1);
+        Serial.print("Humidity level: ");
+        Serial.print(min_humid);
+        Serial.println("%");
+    }
+
+    if (checkButton(btns[0]))
+    {
+        Serial.print("You've set min humidity level: ");
+        Serial.print(min_humid);
+        Serial.println("%");
+        break;
+    }
+
+    delay(70);
+  }
+
+  return min_humid;
+}
 
 
