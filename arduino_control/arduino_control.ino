@@ -12,6 +12,9 @@ iarduino_RTC time(RTC_DS1307);
 // Diod
 #define diod 0
 
+// Blower relay
+#define blower 8
+
 // Mist maker relay
 #define mMaker 9
 
@@ -205,6 +208,7 @@ boolean humidification(int min_humid, boolean humidification_status)
   if (!humidification_status && real_humid <= min_humid) 
   {
     digitalWrite(mMaker, LOW);
+    digitalWrite(blower, LOW);
     return true;
   }
   
@@ -221,6 +225,7 @@ boolean humidification(int min_humid, boolean humidification_status)
   else if (humidification_status && real_humid >= required_humid)
   {
     digitalWrite(mMaker, HIGH);
+    digitalWrite(blower, HIGH);
     return false;
   }
 }
